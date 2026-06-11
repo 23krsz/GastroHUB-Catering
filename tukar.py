@@ -4,8 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# GANTI PAKE KODE YANG LO COPY DARI URL BROWSER TADI
-KODE_DARI_URL = "224607058840acce54df3c45f675187f843c9282"
+# Paste kode dari URL browser di sini, JANGAN di-commit ke Git.
+# Setelah berhasil dapat refresh_token, kosongkan kembali baris ini.
+KODE_DARI_URL = ""
+
+if not KODE_DARI_URL:
+    print("❌ KODE_DARI_URL masih kosong. Isi dulu sebelum dijalankan.")
+    exit(1)
 
 url = "https://www.strava.com/oauth/token"
 payload = {

@@ -1,4 +1,10 @@
 .env
+.env.*
+!.env.example
 venv/
 __pycache__/
+*.pyc
+.streamlit/
 orders_db.json
+.DS_Store
+Thumbs.db
