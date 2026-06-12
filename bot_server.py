@@ -60,7 +60,13 @@ def _check_order_gate(member: dict) -> str | None:
         return closed_message(member.get("nama", "Member"), reason or "after_close")
     return None
 
-def _build_rekomendasi(daftar_menu: list[dict], kalori_target: int, goal_type: str) -> list[dict]:
+def _build_rekomendasi(
+    daftar_menu: list[dict],
+    kalori_target: int,
+    goal_type: str,
+    kalori_terbakar: int,
+    modifier: float,
+) -> list[dict]:
     rekomendasi = []
     for menu in daftar_menu:
         m     = kalori_target / menu["kalori_std"]
@@ -72,7 +78,9 @@ def _build_rekomendasi(daftar_menu: list[dict], kalori_target: int, goal_type: s
             "protein_gram":     tn["protein_gram"],
             "karbo_gram":       tn["karbo_gram"],
             "harga_final":      round(menu["harga_std"] * m),
-            "keterangan_harga": build_price_note(m, goal_type),
+            "keterangan_harga": build_price_note(
+                kalori_terbakar, kalori_target, goal_type, modifier,
+            ),
             "detail_item":      items,
             "total_nutrisi":    tn,
             "menu_template_id": menu.get("id"),
@@ -105,7 +113,6 @@ member_sessions:    dict[str, dict]  = {}
 daftar_state:       dict[str, dict]  = {}
 order_state:        dict[str, dict]  = {}
 order_state_ts:     dict[str, float] = {}   # timestamp terakhir aktif
-manual_pref_count:  dict[str, int]   = {}   # hitung berapa kali pilih manual vs Strava
 
 # ── SUPABASE HELPERS ───────────────────────────────────────────────────────────
 
@@ -324,16 +331,87 @@ def is_order_fresh(chat_id: str) -> bool:
 def touch_order(chat_id: str):
     order_state_ts[chat_id] = time.time()
 
-def _track_manual_pref(chat_id: str, member_id: int):
-    """Setelah 2× user pilih manual daripada Strava, set flag prefers_manual."""
-    manual_pref_count[chat_id] = manual_pref_count.get(chat_id, 0) + 1
-    if manual_pref_count[chat_id] >= 2:
-        try:
-            supabase.table("user_profile").update(
-                {"prefers_manual": True}
-            ).eq("id", member_id).execute()
-        except Exception:
-            pass
+def _is_strava_linked(member: dict) -> bool:
+    return bool(member.get("strava_connected") and member.get("strava_refresh_token"))
+
+def _send_activity_source_prompt(chat_id: str, member: dict):
+    """Selalu tampilkan pilihan sumber data di awal setiap /order."""
+    markup = InlineKeyboardMarkup()
+    if _is_strava_linked(member):
+        markup.add(InlineKeyboardButton("🏃 Dari Strava", callback_data="ord_from_strava"))
+        body = (
+            "Strava sudah terhubung — bot bisa ambil aktivitasmu otomatis.\n"
+            "Atau input manual jika aktivitas belum tercatat di Strava."
+        )
+    else:
+        markup.add(InlineKeyboardButton("🔗 Hubungkan Strava", callback_data="ord_connect_strava"))
+        body = (
+            "Hubungkan Strava agar bot otomatis membaca aktivitasmu setelah olahraga.\n"
+            "Atau langsung input manual sekarang."
+        )
+    markup.add(InlineKeyboardButton("✏️ Input Manual", callback_data="ord_manual"))
+    bot.send_message(chat_id,
+        "📍 <b>Dari mana data aktivitasmu?</b>\n\n" + body,
+        parse_mode="HTML", reply_markup=markup)
+
+def _fetch_and_show_strava_activities(chat_id: str, member: dict):
+    """Ambil aktivitas Strava setelah member memilih 'Dari Strava'."""
+    loading = bot.send_message(chat_id, "⏳ Mengambil aktivitas dari Strava...")
+    token = get_strava_token(member["strava_refresh_token"])
+
+    if token:
+        raw_list = fetch_recent_activities(token, hours=24)
+        berat_kg = get_berat(member["id"])
+
+        if raw_list:
+            activities = [process_strava_activity(a, berat_kg) for a in raw_list[:5]]
+            order_state[chat_id]["strava_activities"] = activities
+
+            if len(activities) == 1 and activities[0]["jenis"] == "unknown":
+                order_state[chat_id]["pending_unknown_idx"] = 0
+                try: bot.delete_message(chat_id, loading.message_id)
+                except Exception: pass
+                _ask_unknown_type(chat_id, activities[0])
+                return
+
+            msg, markup = build_activity_selection(activities)
+            try:
+                bot.edit_message_text(msg, chat_id=chat_id,
+                    message_id=loading.message_id, parse_mode="HTML", reply_markup=markup)
+            except Exception:
+                bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=markup)
+            return
+
+        fallback = fetch_fallback_activity(token)
+        if fallback:
+            activities = [process_strava_activity(fallback[0], berat_kg)]
+            order_state[chat_id]["strava_activities"] = activities
+            a   = activities[0]
+            em  = SPORT_EMOJI.get(a["jenis"], "❓")
+            ts  = _fmt_activity_time(a["start_time"])
+            dist = f"{a['jarak_km']} km · " if a["jarak_km"] > 0 else ""
+            kal  = f"~{a['kalori_est']} kkal" if a["kalori_est"] > 0 else "tipe tidak dikenal"
+            fallback_msg = (
+                f"⚠️ <b>Tidak ada aktivitas dalam 24 jam terakhir.</b>\n\n"
+                f"Aktivitas terakhirmu:\n"
+                f"{em} <b>{html.escape(a['nama'])}</b> · {ts}\n"
+                f"{dist}{a['waktu_menit']} mnt · {kal}\n\n"
+                f"Pakai ini atau input manual?"
+            )
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("✅ Pakai aktivitas terakhir", callback_data="ord_pick:0"))
+            markup.add(InlineKeyboardButton("✏️ Input Manual",             callback_data="ord_manual"))
+            try:
+                bot.edit_message_text(fallback_msg, chat_id=chat_id,
+                    message_id=loading.message_id, parse_mode="HTML", reply_markup=markup)
+            except Exception:
+                bot.send_message(chat_id, fallback_msg, parse_mode="HTML", reply_markup=markup)
+            return
+
+    try: bot.delete_message(chat_id, loading.message_id)
+    except Exception: pass
+    bot.send_message(chat_id, "⚠️ Gagal mengambil data Strava. Silakan input manual.")
+    _send_manual_activity_picker(chat_id)
 
 # ── KALORI & MENU CALCULATION ──────────────────────────────────────────────────
 
@@ -361,12 +439,32 @@ def total_nutrition(items: list) -> dict:
         "lemak_gram":   round(sum(i["lemak_gram"] for i in items), 1),
     }
 
-def build_price_note(multiplier: float, goal_type: str) -> str:
-    pct = round((multiplier - 1) * 100, 1)
-    label = {"maintenance": "maintenance", "deficit": "defisit", "surplus": "surplus"}.get(goal_type, goal_type)
-    if pct > 0: return f"Porsi +{pct}% dari standar. Goal: {label}."
-    if pct < 0: return f"Porsi {pct}% dari standar. Goal: {label}."
-    return f"Porsi standar. Goal: {label}."
+def format_goal_effect(goal_type: str, modifier: float) -> str:
+    if goal_type == "maintenance":
+        return "ganti 100% kalori terbakar"
+    if goal_type == "deficit":
+        return f"defisit — ganti {round(modifier * 100)}% kalori terbakar"
+    if goal_type == "surplus":
+        return f"surplus — ganti {round(modifier * 100)}% kalori terbakar"
+    return goal_type
+
+
+def build_price_note(
+    kalori_terbakar: int,
+    kalori_target: int,
+    goal_type: str,
+    modifier: float,
+) -> str:
+    goal_text = format_goal_effect(goal_type, modifier)
+    if kalori_terbakar <= 0:
+        return f"Target recovery {fmt(kalori_target)} kkal. Goal: {goal_text}."
+    pct_recovery = round(kalori_target / kalori_terbakar * 100)
+    return (
+        f"Target recovery {fmt(kalori_target)} kkal "
+        f"({pct_recovery}% dari {fmt(kalori_terbakar)} kkal terbakar). "
+        f"Goal: {goal_text}."
+    )
+
 
 def analyze(activity: dict, member: dict) -> dict:
     user_id  = member["id"]
@@ -376,7 +474,9 @@ def analyze(activity: dict, member: dict) -> dict:
     daftar_menu = _fetch_daily_menus()
     kalori_terbakar = estimate_calories(activity, berat_kg)
     kalori_target   = round(kalori_terbakar * modifier)
-    rekomendasi = _build_rekomendasi(daftar_menu, kalori_target, goal_type)
+    rekomendasi = _build_rekomendasi(
+        daftar_menu, kalori_target, goal_type, kalori_terbakar, modifier,
+    )
 
     jenis = activity.get("jenis", "lari")
     if jenis == "gym":
@@ -392,6 +492,7 @@ def analyze(activity: dict, member: dict) -> dict:
         "rekomendasi":     rekomendasi,
         "berat_kg":        berat_kg,
         "goal_type":       goal_type,
+        "goal_modifier":   modifier,
         "kalori_terbakar": kalori_terbakar,
         "kalori_target":   kalori_target,
     }
@@ -452,14 +553,14 @@ def build_options_message(k: dict, member_nama: str) -> str:
     berat = k.get("berat_kg", 65)
     kt    = k.get("kalori_terbakar", 0)
     ktar  = k.get("kalori_target", 0)
+    modifier = float(k.get("goal_modifier", 1.0))
     emoji = {"maintenance": "⚖️", "deficit": "📉", "surplus": "📈"}.get(gt, "⚖️")
-    pct   = round((ktar / kt - 1) * 100) if kt else 0
-    sign  = f"+{pct}" if pct > 0 else str(pct)
+    goal_effect = format_goal_effect(gt, modifier)
 
     pesan = (
         f"👋 Halo <b>{html.escape(member_nama)}</b>\n\n"
         f"{html.escape(k['aktivitas'])}\n"
-        f"{emoji} Berat: {berat}kg | {emoji} {gt} ({sign}%) → target <b>{fmt(ktar)} kkal</b>\n\n"
+        f"{emoji} Berat: {berat}kg | Goal: {gt} ({goal_effect}) → target <b>{fmt(ktar)} kkal</b>\n\n"
         f"🎯 <b>OPSI RECOVERY HARI INI</b>\n"
     )
     for i, menu in enumerate(k["rekomendasi"]):
@@ -496,23 +597,23 @@ def build_detail_message(activity: str, menu: dict, is_ordered: bool = False) ->
     status = "✅ <b>ORDER DIKONFIRMASI</b>" if is_ordered else "🔎 <b>DETAIL MENU</b>"
     pesan  = f"{status}\n{html.escape(menu['nama_menu'])}\n\n"
     pesan += f"{html.escape(activity)}\n"
-    pesan += f"<b>Harga:</b> {fmt_rp(menu['harga_final'])}\n"
-    pesan += f"{html.escape(menu.get('keterangan_harga', ''))}\n\n"
-    pesan += "<b>Breakdown item & nutrisi</b>\n"
+    pesan += f"💰 <b>Harga:</b> {fmt_rp(menu['harga_final'])}\n"
+    pesan += f"📝 {html.escape(menu.get('keterangan_harga', ''))}\n\n"
+    pesan += "🍽️ <b>Breakdown item & nutrisi</b>\n"
     for item in (menu.get("detail_item") or []):
         pesan += (
             f"• {html.escape(item.get('nama_item', ''))} ({fmt(item.get('porsi_gram'))}g)\n"
-            f"  {fmt(item.get('kalori'))} kkal\n"
-            f"  {fmt(item.get('protein_gram'), 1)}g protein\n"
-            f"  {fmt(item.get('karbo_gram'), 1)}g karbo\n"
-            f"  {fmt(item.get('lemak_gram'), 1)}g lemak\n\n"
+            f"  🔥 {fmt(item.get('kalori'))} kkal\n"
+            f"  🥩 {fmt(item.get('protein_gram'), 1)}g protein\n"
+            f"  🍚 {fmt(item.get('karbo_gram'), 1)}g karbo\n"
+            f"  🧈 {fmt(item.get('lemak_gram'), 1)}g lemak\n\n"
         )
     pesan += (
-        f"<b>Total</b>\n"
-        f"{fmt(tn.get('kalori'))} kkal\n"
-        f"{fmt(tn.get('protein_gram'), 1)}g protein\n"
-        f"{fmt(tn.get('karbo_gram'), 1)}g karbo\n"
-        f"{fmt(tn.get('lemak_gram'), 1)}g lemak\n\n"
+        f"📊 <b>Total</b>\n"
+        f"🔥 {fmt(tn.get('kalori'))} kkal\n"
+        f"🥩 {fmt(tn.get('protein_gram'), 1)}g protein\n"
+        f"🍚 {fmt(tn.get('karbo_gram'), 1)}g karbo\n"
+        f"🧈 {fmt(tn.get('lemak_gram'), 1)}g lemak\n\n"
     )
     pesan += "Pesanan dikirim ke dapur Sassyroll." if is_ordered else "Cocok? Tekan tombol order di bawah."
     return pesan
@@ -610,7 +711,11 @@ def _prompt_daftar_goal(chat_id: str):
     bot.send_message(chat_id,
         f"<b>{_step_bar(6)}</b> — Langkah terakhir!\n\n"
         "🎯 <b>Apa goal kesehatanmu saat ini?</b>\n\n"
-        "<i>Tap salah satu tombol di bawah. Kamu bisa mengubahnya kapan saja dengan /goal</i>",
+        "Goal mengatur <b>berapa % kalori terbakar</b> yang ingin diganti menu recovery:\n"
+        "• Maintenance — ganti <b>100%</b>\n"
+        "• Defisit — ganti <b>80%</b>\n"
+        "• Surplus — ganti <b>120%</b>\n\n"
+        "<i>Porsi menu menyesuaikan aktivitas + goal di atas. Ubah kapan saja dengan /goal</i>",
         parse_mode="HTML", reply_markup=markup)
 
 def _show_daftar_ringkasan(chat_id: str):
@@ -961,84 +1066,7 @@ def cmd_order(message):
     # Reset & init order state
     order_state[chat_id] = {"member": member}
     touch_order(chat_id)
-
-    # User yang sudah konsisten pilih manual → skip tawaran Strava
-    if member.get("prefers_manual"):
-        _send_manual_activity_picker(chat_id)
-        return
-
-    # ── Strava terhubung ──────────────────────────────────────────────────────
-    if member.get("strava_connected") and member.get("strava_refresh_token"):
-        loading = bot.send_message(chat_id, "⏳ Mengambil aktivitas dari Strava...")
-        token = get_strava_token(member["strava_refresh_token"])
-
-        if token:
-            raw_list = fetch_recent_activities(token, hours=24)
-            berat_kg = get_berat(member["id"])
-
-            if raw_list:
-                activities = [process_strava_activity(a, berat_kg) for a in raw_list[:5]]
-                order_state[chat_id]["strava_activities"] = activities
-
-                # Satu aktivitas dan tipenya unknown → tanya dulu
-                if len(activities) == 1 and activities[0]["jenis"] == "unknown":
-                    order_state[chat_id]["pending_unknown_idx"] = 0
-                    try: bot.delete_message(chat_id, loading.message_id)
-                    except Exception: pass
-                    _ask_unknown_type(chat_id, activities[0])
-                    return
-
-                msg, markup = build_activity_selection(activities)
-                try:
-                    bot.edit_message_text(msg, chat_id=chat_id,
-                        message_id=loading.message_id, parse_mode="HTML", reply_markup=markup)
-                except Exception:
-                    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=markup)
-                return
-
-            # Tidak ada aktivitas 24 jam terakhir → coba fallback aktivitas terakhir
-            fallback = fetch_fallback_activity(token)
-            if fallback:
-                activities = [process_strava_activity(fallback[0], berat_kg)]
-                order_state[chat_id]["strava_activities"] = activities
-                a   = activities[0]
-                em  = SPORT_EMOJI.get(a["jenis"], "❓")
-                ts  = _fmt_activity_time(a["start_time"])
-                dist = f"{a['jarak_km']} km · " if a["jarak_km"] > 0 else ""
-                kal  = f"~{a['kalori_est']} kkal" if a["kalori_est"] > 0 else "tipe tidak dikenal"
-                fallback_msg = (
-                    f"⚠️ <b>Tidak ada aktivitas dalam 24 jam terakhir.</b>\n\n"
-                    f"Aktivitas terakhirmu:\n"
-                    f"{em} <b>{html.escape(a['nama'])}</b> · {ts}\n"
-                    f"{dist}{a['waktu_menit']} mnt · {kal}\n\n"
-                    f"Pakai ini atau input manual?"
-                )
-                markup = InlineKeyboardMarkup()
-                markup.add(InlineKeyboardButton("✅ Pakai aktivitas terakhir", callback_data="ord_pick:0"))
-                markup.add(InlineKeyboardButton("✏️ Input Manual",             callback_data="ord_manual"))
-                try:
-                    bot.edit_message_text(fallback_msg, chat_id=chat_id,
-                        message_id=loading.message_id, parse_mode="HTML", reply_markup=markup)
-                except Exception:
-                    bot.send_message(chat_id, fallback_msg, parse_mode="HTML", reply_markup=markup)
-                return
-
-        # Token gagal / tidak ada aktivitas sama sekali
-        try: bot.delete_message(chat_id, loading.message_id)
-        except Exception: pass
-        bot.send_message(chat_id, "⚠️ Gagal mengambil data Strava. Silakan input manual.")
-        _send_manual_activity_picker(chat_id)
-        return
-
-    # ── Strava belum terhubung ────────────────────────────────────────────────
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🔗 Hubungkan Strava", callback_data="ord_connect_strava"))
-    markup.add(InlineKeyboardButton("✏️ Input Manual",      callback_data="ord_manual"))
-    bot.send_message(chat_id,
-        "📍 <b>Dari mana data aktivitasmu?</b>\n\n"
-        "Hubungkan Strava agar bot otomatis membaca aktivitasmu setelah olahraga.\n"
-        "Atau langsung input manual sekarang.",
-        parse_mode="HTML", reply_markup=markup)
+    _send_activity_source_prompt(chat_id, member)
 
 def step_order_jarak(message):
     chat_id = str(message.from_user.id)
@@ -1116,13 +1144,16 @@ def _kirim_menu_by_kalori(chat_id: str, member: dict, kalori_terbakar: int, akti
         bot.send_message(chat_id, f"❌ {html.escape(str(e))}", parse_mode="HTML")
         return
 
-    rekomendasi = _build_rekomendasi(daftar_menu, kalori_target, goal_type)
+    rekomendasi = _build_rekomendasi(
+        daftar_menu, kalori_target, goal_type, kalori_terbakar, modifier,
+    )
 
     keputusan = {
         "aktivitas":       aktivitas_str,
         "rekomendasi":     rekomendasi,
         "berat_kg":        get_berat(member["id"]),
         "goal_type":       goal_type,
+        "goal_modifier":   modifier,
         "kalori_terbakar": kalori_terbakar,
         "kalori_target":   kalori_target,
     }
@@ -1239,10 +1270,9 @@ def cmd_goal(message):
             "aktif_dari": datetime.datetime.now().isoformat(),
         }).execute()
 
-        pct_disp = round((modifier - 1) * 100)
-        sign = f"+{pct_disp}" if pct_disp >= 0 else str(pct_disp)
+        goal_effect = format_goal_effect(goal_type, modifier)
         bot.send_message(chat_id,
-            f"✅ Goal diupdate: <b>{goal_type}</b> ({sign}% kalori)", parse_mode="HTML")
+            f"✅ Goal diupdate: <b>{goal_type}</b> — {goal_effect}.", parse_mode="HTML")
     except (ValueError, IndexError):
         bot.send_message(chat_id,
             "❌ Format:\n<code>/goal maintenance</code>\n<code>/goal defisit</code>\n"
@@ -1358,12 +1388,33 @@ def handle_callback(call):
             "1. Tap tombol di bawah\n"
             "2. Login & izinkan akses Strava\n"
             "3. Kamu dapat notifikasi setelah terhubung\n"
-            "4. Ketik /order lagi untuk pesan\n\n"
+            "4. Ketik /order lagi — pilih <b>Dari Strava</b> untuk ambil aktivitas\n\n"
             "<i>⚠️ Link hanya berfungsi jika server aktif (ngrok berjalan).</i>",
             parse_mode="HTML", reply_markup=markup)
         return
 
-    # ── Order: pilih manual (dari tawaran Strava) ──────────────────────────────
+    # ── Order: ambil dari Strava (sudah terhubung) ───────────────────────────
+    if action == "ord_from_strava":
+        ok, member = is_active_member(chat_id)
+        if not ok:
+            bot.answer_callback_query(call.id, "Akses ditolak.")
+            return
+        if not _is_strava_linked(member):
+            bot.answer_callback_query(call.id, "Strava belum terhubung.")
+            _send_activity_source_prompt(chat_id, member)
+            return
+        bot.answer_callback_query(call.id)
+        try:
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        except Exception:
+            pass
+        if not is_order_fresh(chat_id):
+            order_state[chat_id] = {"member": member}
+            touch_order(chat_id)
+        _fetch_and_show_strava_activities(chat_id, member)
+        return
+
+    # ── Order: pilih manual (dari tawaran sumber data) ───────────────────────
     if action == "ord_manual":
         ok, member = is_active_member(chat_id)
         if not ok:
@@ -1377,7 +1428,6 @@ def handle_callback(call):
         if not is_order_fresh(chat_id):
             order_state[chat_id] = {"member": member}
             touch_order(chat_id)
-        _track_manual_pref(chat_id, member["id"])
         _send_manual_activity_picker(chat_id)
         return
 

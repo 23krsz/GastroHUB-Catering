@@ -155,14 +155,26 @@ def calculate_total_nutrition(detail_items):
         "lemak_gram":   round_macro(sum(item["lemak_gram"] for item in detail_items)),
     }
 
-def build_price_note(multiplier, goal_type="maintenance"):
-    percentage = round((multiplier - 1) * 100, 1)
-    goal_label = {"maintenance": "maintenance", "deficit": "defisit", "surplus": "surplus"}.get(goal_type, "maintenance")
-    if percentage > 0:
-        return f"Porsi +{percentage}% dari standar. Goal: {goal_label}."
-    if percentage < 0:
-        return f"Porsi {percentage}% dari standar. Goal: {goal_label}."
-    return f"Porsi standar sesuai kebutuhan. Goal: {goal_label}."
+def format_goal_effect(goal_type: str, modifier: float) -> str:
+    if goal_type == "maintenance":
+        return "ganti 100% kalori terbakar"
+    if goal_type == "deficit":
+        return f"defisit — ganti {round(modifier * 100)}% kalori terbakar"
+    if goal_type == "surplus":
+        return f"surplus — ganti {round(modifier * 100)}% kalori terbakar"
+    return goal_type
+
+
+def build_price_note(kalori_terbakar, kalori_target, goal_type="maintenance", modifier=1.0):
+    goal_text = format_goal_effect(goal_type, modifier)
+    if kalori_terbakar <= 0:
+        return f"Target recovery {kalori_target} kkal. Goal: {goal_text}."
+    pct_recovery = round(kalori_target / kalori_terbakar * 100)
+    return (
+        f"Target recovery {kalori_target} kkal "
+        f"({pct_recovery}% dari {kalori_terbakar} kkal terbakar). "
+        f"Goal: {goal_text}."
+    )
 
 def analyze_nutrition_and_pricing(activity_data):
     berat_kg = get_user_berat()
@@ -190,7 +202,9 @@ def analyze_nutrition_and_pricing(activity_data):
             "protein_gram":    total_nutrisi["protein_gram"],
             "karbo_gram":      total_nutrisi["karbo_gram"],
             "harga_final":     round(menu["harga_std"] * multiplier),
-            "keterangan_harga": build_price_note(multiplier, goal_type),
+            "keterangan_harga": build_price_note(
+                kalori_terbakar, kalori_target, goal_type, modifier,
+            ),
             "detail_item":     detail_items,
             "total_nutrisi":   total_nutrisi
         })
@@ -291,26 +305,28 @@ def build_menu_detail_message(activity, menu, is_ordered=False):
     total  = get_total_nutrisi(menu)
     status = "✅ <b>ORDER DIKONFIRMASI</b>" if is_ordered else "🔎 <b>DETAIL MENU</b>"
     pesan  = f"{status}\n{html.escape(menu['nama_menu'])}\n\n"
-    pesan += f"🏃 {html.escape(activity)}\n"
-    pesan += f"💰 <b>Total Harga:</b> {format_rupiah(menu['harga_final'])}\n"
+    pesan += f"{html.escape(activity)}\n"
+    pesan += f"💰 <b>Harga:</b> {format_rupiah(menu['harga_final'])}\n"
     pesan += f"📝 {html.escape(menu.get('keterangan_harga', ''))}\n\n"
-    pesan += "<b>Breakdown item & nutrisi</b>\n"
+    pesan += "🍽️ <b>Breakdown item & nutrisi</b>\n"
 
     for item in (menu.get("detail_item") or []):
         pesan += (
-            f"• <b>{html.escape(item.get('nama_item', 'Item'))}</b> "
+            f"• {html.escape(item.get('nama_item', 'Item'))} "
             f"({format_number(item.get('porsi_gram'))}g)\n"
-            f"  🔥 {format_number(item.get('kalori'))} kkal | "
-            f"🥩 P {format_number(item.get('protein_gram'), 1)}g | "
-            f"🍚 K {format_number(item.get('karbo_gram'), 1)}g | "
-            f"🥑 L {format_number(item.get('lemak_gram'), 1)}g\n\n"
+            f"  🔥 {format_number(item.get('kalori'))} kkal\n"
+            f"  🥩 {format_number(item.get('protein_gram'), 1)}g protein\n"
+            f"  🍚 {format_number(item.get('karbo_gram'), 1)}g karbo\n"
+            f"  🧈 {format_number(item.get('lemak_gram'), 1)}g lemak\n\n"
         )
 
-    pesan += "<b>Total nutrisi</b>\n"
-    pesan += f"🔥 Kalori: {format_number(total.get('kalori'))} kkal\n"
-    pesan += f"🥩 Protein: {format_number(total.get('protein_gram'), 1)}g\n"
-    pesan += f"🍚 Karbo: {format_number(total.get('karbo_gram'), 1)}g\n"
-    pesan += f"🥑 Lemak: {format_number(total.get('lemak_gram'), 1)}g\n\n"
+    pesan += (
+        f"📊 <b>Total</b>\n"
+        f"🔥 {format_number(total.get('kalori'))} kkal\n"
+        f"🥩 {format_number(total.get('protein_gram'), 1)}g protein\n"
+        f"🍚 {format_number(total.get('karbo_gram'), 1)}g karbo\n"
+        f"🧈 {format_number(total.get('lemak_gram'), 1)}g lemak\n\n"
+    )
     pesan += "Pesanan sudah dikirim ke dapur Sassyroll." if is_ordered else "Kalau sudah cocok, tekan tombol order di bawah."
     return pesan
 
