@@ -1,5 +1,5 @@
 """
-bot_server.py — Bot 24/7 untuk semua member Sassyroll Catering.
+bot_server.py — Bot 24/7 untuk semua member GastroHUB Catering.
 Jalankan sekali, biarkan berjalan terus di background.
 """
 import os
@@ -615,7 +615,7 @@ def build_detail_message(activity: str, menu: dict, is_ordered: bool = False) ->
         f"🍚 {fmt(tn.get('karbo_gram'), 1)}g karbo\n"
         f"🧈 {fmt(tn.get('lemak_gram'), 1)}g lemak\n\n"
     )
-    pesan += "Pesanan dikirim ke dapur Sassyroll." if is_ordered else "Cocok? Tekan tombol order di bawah."
+    pesan += "Pesanan dikirim ke dapur GastroHUB." if is_ordered else "Cocok? Tekan tombol order di bawah."
     return pesan
 
 # ── BOT ────────────────────────────────────────────────────────────────────────
@@ -758,7 +758,7 @@ def cmd_help(message):
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🚀 Daftar Sekarang", callback_data="reg_cta"))
         bot.send_message(chat_id,
-            "👋 Halo! Selamat datang di <b>Sassyroll Healthy Catering</b>.\n\n"
+            "👋 Halo! Selamat datang di <b>GastroHUB Healthy Catering</b>.\n\n"
             "Kami menyesuaikan menu makan sehat berdasarkan:\n"
             "• Aktivitas fisikmu hari ini 🏃\n"
             "• Berat badan & target kesehatanmu ⚖️\n"
@@ -784,7 +784,7 @@ def cmd_help(message):
 
     strava = "✅ Terhubung" if member.get("strava_connected") else "❌ Belum → /hubungkan_strava"
     teks = (
-        f"🍱 <b>Sassyroll Healthy Catering</b>\n\n"
+        f"🍱 <b>GastroHUB Healthy Catering</b>\n\n"
         f"<b>🛒 Order</b>\n"
         f"/order — pesan menu setelah olahraga\n\n"
         f"<b>👤 Profilku</b>\n"
@@ -852,7 +852,7 @@ def cmd_daftar(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🚀 Mulai Daftar", callback_data="reg_start"))
     bot.send_message(chat_id,
-        "📋 <b>Pendaftaran Member Sassyroll</b>\n\n"
+        "📋 <b>Pendaftaran Member GastroHUB</b>\n\n"
         "Kami butuh beberapa data untuk menyesuaikan menu dan porsi makananmu secara personal.\n\n"
         "Prosesnya hanya <b>~2 menit</b> dan cukup dilakukan sekali.\n\n"
         "🕕 Jam order: 06:00 – 18:00 WITA\n"
@@ -1630,7 +1630,7 @@ def handle_callback(call):
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
-    print("Sassyroll Bot Server dimulai...")
+    print("GastroHUB Bot Server dimulai...")
     print(f"  Admin Chat ID : {ADMIN_CHAT_ID}")
     print(f"  Base URL      : {BASE_URL}")
     print("  Ketik /daftar di Telegram untuk mendaftar sebagai member.")

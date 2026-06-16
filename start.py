@@ -1,5 +1,5 @@
 """
-Sassyroll Startup Orchestrator
+GastroHUB Startup Orchestrator
 ================================
 Menjalankan semua service sekaligus:
   1. ngrok  -> expose port 8000 ke internet (untuk Strava OAuth callback)
@@ -31,7 +31,7 @@ def log(msg: str):
     print(f"[start.py] {msg}", flush=True)
 
 # ── Parse argumen ────────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description="Sassyroll startup orchestrator")
+parser = argparse.ArgumentParser(description="GastroHUB startup orchestrator")
 parser.add_argument(
     "--ngrok-domain",
     default=os.getenv("NGROK_STATIC_DOMAIN", ""),
@@ -146,7 +146,7 @@ log("Bot server berjalan.")
 # ── Ringkasan ────────────────────────────────────────────────────────────────
 print(flush=True)
 print("=" * 55, flush=True)
-print("  SASSYROLL SYSTEM AKTIF", flush=True)
+print("  GASTROHUB SYSTEM AKTIF", flush=True)
 print("=" * 55, flush=True)
 print(f"  Ngrok URL : {public_url}", flush=True)
 print(f"  Strava CB : {public_url}/strava/callback", flush=True)

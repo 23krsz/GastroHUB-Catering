@@ -4,7 +4,7 @@ chcp 65001 >nul
 
 echo ==========================================
 
-echo   SASSYROLL - Startup
+echo   GASTROHUB - Startup
 
 echo ==========================================
 

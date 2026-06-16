@@ -126,5 +126,5 @@ def main(path: str):
 
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else r"c:\Users\62878\Downloads\sassyroll_master_menu_update.xlsx"
+    path = sys.argv[1] if len(sys.argv) > 1 else r"c:\Users\62878\Downloads\gastrohub_master_menu_update.xlsx"
     raise SystemExit(main(path))

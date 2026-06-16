@@ -131,7 +131,7 @@ def main(path: Path):
 
 
 if __name__ == "__main__":
-    default = ROOT / "data" / "sassyroll_menu_update.xlsx"
+    default = ROOT / "data" / "gastrohub_menu_update.xlsx"
     excel_path = Path(sys.argv[1]) if len(sys.argv) > 1 else default
     if not excel_path.exists():
         raise SystemExit(f"File tidak ditemukan: {excel_path}")

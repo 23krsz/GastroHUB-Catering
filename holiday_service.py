@@ -9,7 +9,7 @@ _HOLIDAY_KEY = "holiday_mode"
 _DEFAULT = {
     "active": False,
     "message": (
-        "Halo! Dapur Sassyroll libur hari ini. "
+        "Halo! Dapur GastroHUB libur hari ini. "
         "Silahkan hubungi admin untuk info lebih lanjut."
     ),
 }

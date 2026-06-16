@@ -327,7 +327,7 @@ def build_menu_detail_message(activity, menu, is_ordered=False):
         f"🍚 {format_number(total.get('karbo_gram'), 1)}g karbo\n"
         f"🧈 {format_number(total.get('lemak_gram'), 1)}g lemak\n\n"
     )
-    pesan += "Pesanan sudah dikirim ke dapur Sassyroll." if is_ordered else "Kalau sudah cocok, tekan tombol order di bawah."
+    pesan += "Pesanan sudah dikirim ke dapur GastroHUB." if is_ordered else "Kalau sudah cocok, tekan tombol order di bawah."
     return pesan
 
 # ── TELEGRAM BOT SETUP ─────────────────────────────────────────────────────────
@@ -604,7 +604,7 @@ def cmd_help(message):
         return
     bot.send_message(
         CHAT_ID,
-        "🍣 <b>Sassyroll AI Agent</b>\n\n"
+        "🍽️ <b>GastroHUB AI Agent</b>\n\n"
         "<b>Profil</b>\n"
         "/setup — setup profil pertama kali\n"
         "/profil — lihat profil & goal saat ini\n"

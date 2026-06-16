@@ -14,7 +14,7 @@ from holiday_service import get_holiday_settings, save_holiday_settings, invalid
 load_dotenv()
 
 st.set_page_config(
-    page_title="Sassyroll Kitchen Dashboard", 
+    page_title="GastroHUB Kitchen Dashboard", 
     page_icon="🍣", 
     layout="wide"
 )
@@ -35,7 +35,7 @@ def render_login():
     with col_center:
         st.markdown("<br><br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("### 🍣 Sassyroll Kitchen")
+            st.markdown("### 🍽️ GastroHUB Kitchen")
             st.markdown("Masuk untuk lanjut ke dashboard.")
             with st.form("login_form"):
                 password = st.text_input("Password", type="password", placeholder="Masukkan password dapur")
@@ -771,7 +771,7 @@ def render_create_form():
                 st.error(str(error))
 
 title_col, logout_col = st.columns([5, 1])
-title_col.title("🍣 Sassyroll Smart Kitchen Monitor")
+title_col.title("🍽️ GastroHUB Smart Kitchen Monitor")
 if logout_col.button("Logout", use_container_width=True):
     st.session_state["authenticated"] = False
     st.rerun()

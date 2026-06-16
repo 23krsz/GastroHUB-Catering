@@ -1,4 +1,4 @@
-# Sassyroll — Smart Healthy Catering
+# GastroHUB — Smart Healthy Catering
 
 Platform catering sehat berbasis **Telegram Bot + Kitchen Dashboard + Supabase**, dengan personalisasi menu recovery berdasarkan aktivitas olahraga (Strava / input manual), berat badan, dan goal nutrisi member.
 
@@ -64,7 +64,7 @@ flowchart LR
 │   ├── seed_menus_from_excel.py
 │   └── review_menu_excel.py
 ├── data/
-│   └── sassyroll_menu_update.xlsx
+│   └── gastrohub_menu_update.xlsx
 ├── requirements.txt
 └── .env.example
 ```
@@ -76,8 +76,8 @@ flowchart LR
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/23krsz/sassyroll-ai-catering.git
-cd sassyroll-ai-catering
+git clone https://github.com/23krsz/sassyroll-catering.git
+cd sassyroll-catering
 python -m venv venv
 venv\Scripts\activate        # Windows
 pip install -r requirements.txt

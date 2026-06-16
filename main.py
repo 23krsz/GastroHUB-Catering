@@ -42,7 +42,7 @@ def verify_api_key(key: str = Security(api_key_header)):
         raise HTTPException(status_code=403, detail="Akses ditolak: API key tidak valid.")
     return key
 
-app = FastAPI(title="Sassyroll Healthy Catering Backend", version="4.0")
+app = FastAPI(title="GastroHUB Healthy Catering Backend", version="4.0")
 
 
 class MenuItem(BaseModel):
