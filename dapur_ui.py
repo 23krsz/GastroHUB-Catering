@@ -2,9 +2,11 @@ import streamlit as st
 import os
 import html
 import hashlib
+import base64
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, date
+from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -13,11 +15,29 @@ from holiday_service import get_holiday_settings, save_holiday_settings, invalid
 
 load_dotenv()
 
+ASSETS_DIR = Path(__file__).parent / "assets"
+LOGO_PATH = ASSETS_DIR / "gastrohub_logo.png"
+ICON_PATH = ASSETS_DIR / "gastrohub_icon.png"
+
+_favicon = ICON_PATH if ICON_PATH.exists() else LOGO_PATH
 st.set_page_config(
-    page_title="GastroHUB Kitchen Dashboard", 
-    page_icon="🍣", 
-    layout="wide"
+    page_title="GastroHUB Kitchen Dashboard",
+    page_icon=str(_favicon),
+    layout="wide",
 )
+
+if ICON_PATH.exists():
+    st.logo(str(ICON_PATH), icon_image=str(ICON_PATH))
+
+def icon_data_uri(path: Path) -> str:
+    encoded = base64.b64encode(path.read_bytes()).decode()
+    return f"data:image/png;base64,{encoded}"
+
+def render_icon_html(path: Path, height_px: int = 52) -> str:
+    return (
+        f'<img src="{icon_data_uri(path)}" '
+        f'style="height:{height_px}px;width:auto;display:block;" alt="GastroHUB" />'
+    )
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 
@@ -30,22 +50,248 @@ def check_login(password: str) -> bool:
         return False
     return hash_password(password) == stored_hash
 
+def inject_login_styles():
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+        [data-testid="stSidebar"] { display: none; }
+        [data-testid="stHeader"] { display: none !important; }
+        [data-testid="stDecoration"] { display: none; }
+        [data-testid="stToolbar"] { display: none; }
+
+        html, body, [data-testid="stAppViewContainer"] {
+            font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        }
+
+        [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(249, 115, 22, 0.07) 0%, transparent 55%),
+                linear-gradient(165deg, #fafbfc 0%, #f1f5f9 48%, #eef2f7 100%);
+        }
+
+        [data-testid="stMain"] {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            min-height: 100vh !important;
+        }
+
+        [data-testid="stMainBlockContainer"] {
+            width: 100% !important;
+            max-width: 380px !important;
+            margin: 0 auto !important;
+            padding: 0 1.25rem !important;
+            animation: gh-login-rise 0.55s ease-out both;
+        }
+
+        @keyframes gh-login-rise {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+
+        [data-testid="stMainBlockContainer"] hr,
+        [data-testid="stMarkdownContainer"] hr { display: none; }
+
+        .gh-login-hero {
+            text-align: center;
+            background: #ffffff;
+            border: 1px solid rgba(15, 23, 42, 0.07);
+            border-bottom: none;
+            border-radius: 20px 20px 0 0;
+            padding: 2rem 1.75rem 1.35rem 1.75rem;
+            margin-bottom: 0;
+        }
+
+        .gh-login-icon-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem auto;
+            border-radius: 18px;
+            background: linear-gradient(145deg, #fff7ed 0%, #ffffff 100%);
+            border: 1px solid rgba(249, 115, 22, 0.12);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+
+        .gh-login-icon-wrap img {
+            height: 36px !important;
+            width: auto !important;
+        }
+
+        .gh-login-title {
+            font-size: 1.45rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: #0f172a;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .gh-login-subtitle {
+            margin: 0.45rem 0 0 0;
+            color: #94a3b8;
+            font-size: 0.84rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+
+        .gh-login-accent {
+            width: 32px;
+            height: 3px;
+            margin: 1rem auto 0 auto;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #fb923c, #f97316);
+            opacity: 0.85;
+        }
+
+        div[data-testid="stForm"] {
+            background: #ffffff;
+            border: 1px solid rgba(15, 23, 42, 0.07);
+            border-top: 1px solid rgba(15, 23, 42, 0.05);
+            border-radius: 0 0 20px 20px;
+            padding: 0.25rem 1.75rem 1.65rem 1.75rem;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 380px;
+            box-shadow:
+                0 1px 2px rgba(15, 23, 42, 0.04),
+                0 16px 40px rgba(15, 23, 42, 0.07);
+        }
+
+        div[data-testid="stForm"] label {
+            font-weight: 500 !important;
+            color: #64748b !important;
+            font-size: 0.78rem !important;
+            letter-spacing: 0.04em !important;
+            text-transform: uppercase !important;
+        }
+
+        div[data-testid="stForm"] [data-testid="stTextInput"] > div {
+            background: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+        }
+
+        div[data-testid="stForm"] input {
+            border-radius: 12px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #f8fafc !important;
+            padding: 0.72rem 0.9rem !important;
+            font-size: 0.92rem !important;
+            color: #0f172a !important;
+            transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease !important;
+        }
+
+        div[data-testid="stForm"] input::placeholder {
+            color: #94a3b8 !important;
+        }
+
+        div[data-testid="stForm"] input:focus {
+            border-color: #fdba74 !important;
+            background: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12) !important;
+            outline: none !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button {
+            background: linear-gradient(180deg, #fb923c 0%, #f97316 100%) !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+            font-size: 0.9rem !important;
+            letter-spacing: 0.01em !important;
+            padding: 0.72rem 1rem !important;
+            box-shadow: 0 1px 2px rgba(234, 88, 12, 0.25) !important;
+            margin-top: 0.5rem !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button:hover {
+            filter: brightness(1.03) !important;
+            box-shadow: 0 4px 14px rgba(234, 88, 12, 0.28) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button:active {
+            transform: translateY(0) !important;
+        }
+
+        div[data-testid="stForm"] [data-testid="stAlert"] {
+            border-radius: 10px !important;
+            border: 1px solid rgba(239, 68, 68, 0.15) !important;
+            background: #fef2f2 !important;
+            font-size: 0.84rem !important;
+            margin-top: 0.75rem !important;
+        }
+
+        .gh-login-footer {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 380px;
+            margin: 2mm auto 0 auto !important;
+            padding: 0 1.75rem;
+            text-align: center;
+            color: #94a3b8;
+            font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 0.82rem !important;
+            font-weight: 300 !important;
+            letter-spacing: 0.01em;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def render_login():
-    col_left, col_center, col_right = st.columns([1, 1.2, 1])
-    with col_center:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        with st.container(border=True):
-            st.markdown("### 🍽️ GastroHUB Kitchen")
-            st.markdown("Masuk untuk lanjut ke dashboard.")
-            with st.form("login_form"):
-                password = st.text_input("Password", type="password", placeholder="Masukkan password dapur")
-                submitted = st.form_submit_button("Masuk", use_container_width=True)
-                if submitted:
-                    if check_login(password):
-                        st.session_state["authenticated"] = True
-                        st.rerun()
-                    else:
-                        st.error("Password salah.")
+    inject_login_styles()
+
+    icon_html = render_icon_html(ICON_PATH, 36) if ICON_PATH.exists() else ""
+    st.markdown(
+        f"""
+        <div class="gh-login-hero">
+            <div class="gh-login-icon-wrap">{icon_html}</div>
+            <p class="gh-login-title">GastroHUB Kitchen</p>
+            <p class="gh-login-subtitle">Smart catering dashboard</p>
+            <div class="gh-login-accent"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.form("login_form"):
+        password = st.text_input(
+            "Password",
+            type="password",
+            placeholder="Password dapur",
+            label_visibility="visible",
+        )
+        submitted = st.form_submit_button("Masuk", use_container_width=True)
+        if submitted:
+            if check_login(password):
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Password salah. Coba lagi.")
+
+    st.markdown(
+        """
+        <p class="gh-login-footer">GastroHUB · Kitchen Ops · Authorized staff only</p>
+        """,
+        unsafe_allow_html=True,
+    )
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -770,8 +1016,21 @@ def render_create_form():
             except ValueError as error:
                 st.error(str(error))
 
-title_col, logout_col = st.columns([5, 1])
-title_col.title("🍽️ GastroHUB Smart Kitchen Monitor")
+_icon_src = ICON_PATH if ICON_PATH.exists() else None
+title_col, logout_col = st.columns([6, 1])
+with title_col:
+    if _icon_src:
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;gap:4mm;padding:4px 0;">
+                {render_icon_html(_icon_src, 52)}
+                <span style="font-size:2rem;font-weight:700;line-height:1.2;">GastroHUB Smart Kitchen Monitor</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.title("GastroHUB Smart Kitchen Monitor")
 if logout_col.button("Logout", use_container_width=True):
     st.session_state["authenticated"] = False
     st.rerun()
